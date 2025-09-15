@@ -10,52 +10,9 @@ try {
 }
 
 // Загрузка переменных окружения для YandexGPT
-const folderId = process.env.YANDEX_FOLDER_ID;
-const apiKey = process.env.YANDEX_GPT_API_KEY;
-
-// Кэш для IAM токена
-let iamToken = null;
-let tokenExpiry = null;
-
-/**
- * Получает IAM токен из API ключа Yandex Cloud
- */
-async function getIamToken() {
-  // Если токен еще действителен (с запасом 5 минут), возвращаем его
-  if (iamToken && tokenExpiry && Date.now() < tokenExpiry - 5 * 60 * 1000) {
-    return iamToken;
-  }
-
-  try {
-    const response = await fetch('https://iam.api.cloud.yandex.net/iam/v1/tokens', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        yandexPassportOauthToken: apiKey
-      })
-    });
-
-    if (!response.ok) {
-      console.error('Failed to get IAM token:', await response.text());
-      // Если не удалось получить IAM токен, возвращаем API ключ как есть
-      return apiKey;
-    }
-
-    const data = await response.json();
-    iamToken = data.iamToken;
-    // IAM токены действительны 12 часов
-    tokenExpiry = Date.now() + 12 * 60 * 60 * 1000;
-
-    console.log('Successfully obtained IAM token');
-    return iamToken;
-  } catch (error) {
-    console.error('Error getting IAM token:', error);
-    // В случае ошибки возвращаем API ключ
-    return apiKey;
-  }
-}
+const API_KEY = process.env.YANDEX_GPT_API_KEY;        // API-ключ сервисного аккаунта
+const IAM_TOKEN = process.env.YANDEX_IAM_TOKEN;        // или IAM-токен
+const FOLDER_ID = process.env.YANDEX_FOLDER_ID;        // folder ID
 
 /**
  * Отправляет запрос к YandexGPT и возвращает текст ответа.
@@ -63,73 +20,52 @@ async function getIamToken() {
  * @param {string} userMessage – Собственно вопрос/сообщение пользователя.
  */
 async function yandexGptChat(systemPrompt, userMessage) {
-  const url = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
-
-  const payload = {
-    modelUri: `gpt://${folderId}/yandexgpt-lite`,
+  const body = {
+    modelUri: `gpt://${FOLDER_ID}/yandexgpt`,
     completionOptions: {
       stream: false,
-      temperature: 0.7,
-      maxTokens: 1000
+      temperature: 0.6,
+      maxTokens: "2000",
+      reasoningOptions: { mode: "DISABLED" }
     },
     messages: [
-      { role: 'system', text: systemPrompt },
-      { role: 'user', text: userMessage }
+      { role: "system", text: systemPrompt },
+      { role: "user", text: userMessage }
     ]
   };
 
-  console.log('API Key present:', !!apiKey);
-  console.log('Folder ID present:', !!folderId);
-  console.log('API Key length:', apiKey ? apiKey.length : 0);
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(API_KEY
+      ? { 'Authorization': `Api-Key ${API_KEY}` }
+      : { 'Authorization': `Bearer ${IAM_TOKEN}` }),
+    'x-folder-id': FOLDER_ID,
+  };
 
-  // Пробуем получить IAM токен
-  const authToken = await getIamToken();
+  console.log('Using API Key auth:', !!API_KEY);
+  console.log('Using IAM Token auth:', !!IAM_TOKEN);
+  console.log('Folder ID present:', !!FOLDER_ID);
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${authToken}`,
-      'x-folder-id': folderId
-    },
-    body: JSON.stringify(payload)
-  });
+  const response = await fetch(
+    'https://llm.api.cloud.yandex.net/foundationModels/v1/completion',
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    }
+  );
 
   console.log('Response status:', response.status);
-  console.log('Response headers:', Object.fromEntries(response.headers.entries()));
 
   if (!response.ok) {
-    const error = await response.text();
-    console.error('YandexGPT API error details:', error);
-
-    // Если Bearer не сработал, попробуем Api-Key
-    if (response.status === 403) {
-      console.log('Trying Api-Key authorization...');
-      const fallbackResponse = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Api-Key ${apiKey}`,
-          'x-folder-id': folderId
-        },
-        body: JSON.stringify(payload)
-      });
-
-      console.log('Fallback response status:', fallbackResponse.status);
-
-      if (fallbackResponse.ok) {
-        const json = await fallbackResponse.json();
-        console.log('Fallback successful');
-        return json.result.alternatives[0].message.text;
-      }
-    }
-
-    throw new Error(`YandexGPT API error ${response.status}: ${error}`);
+    const text = await response.text();
+    console.error('YandexGPT API error:', text);
+    throw new Error(`YandexGPT API error: ${response.status} ${text}`);
   }
 
-  const json = await response.json();
-  console.log('YandexGPT response structure:', Object.keys(json));
-  return json.result.alternatives[0].message.text;
+  const result = await response.json();
+  console.log('YandexGPT response received');
+  return result.result.alternatives[0].message.text;
 }
 
 async function sendMessage(chatId, text, replyToMessageId = null) {

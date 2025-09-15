@@ -1,4 +1,3 @@
-const OpenAI = require('openai');
 const fs = require('fs').promises;
 
 // Читаем системный промпт из файла
@@ -10,10 +9,49 @@ try {
   SYSTEM_PROMPT = 'Ты полезный AI-ассистент. Отвечай на вопросы пользователя вежливо и информативно.';
 }
 
-const client = new OpenAI({
-  apiKey: `${process.env.YANDEX_FOLDER_ID}@${process.env.YANDEX_GPT_API_KEY}`,
-  baseURL: "https://o2y.ai-cookbook.ru/v1"
-});
+// Загрузка переменных окружения для YandexGPT
+const folderId = process.env.YANDEX_FOLDER_ID;
+const apiKey = process.env.YANDEX_GPT_API_KEY;
+
+/**
+ * Отправляет запрос к YandexGPT и возвращает текст ответа.
+ * @param {string} systemPrompt – Системный промпт (роль system).
+ * @param {string} userMessage – Собственно вопрос/сообщение пользователя.
+ */
+async function yandexGptChat(systemPrompt, userMessage) {
+  const url = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
+
+  const payload = {
+    modelUri: `gpt://${folderId}/yandexgpt-lite`,
+    completionOptions: {
+      stream: false,
+      temperature: 0.7,
+      maxTokens: 1000
+    },
+    messages: [
+      { role: 'system', text: systemPrompt },
+      { role: 'user', text: userMessage }
+    ]
+  };
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Api-Key ${apiKey}`,
+      'x-folder-id': folderId
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`YandexGPT API error ${response.status}: ${error}`);
+  }
+
+  const json = await response.json();
+  return json.result.alternatives[0].message.text;
+}
 
 async function sendMessage(chatId, text, replyToMessageId = null) {
   const url = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`;
@@ -76,15 +114,7 @@ export default async function handler(req, res) {
 
     // Отправляем запрос в YandexGPT
     console.log('Sending request to YandexGPT...');
-    const response = await client.chat.completions.create({
-      model: "yandexgpt-lite",
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: userMessage }
-      ]
-    });
-
-    const botReply = response.choices[0].message.content;
+    const botReply = await yandexGptChat(SYSTEM_PROMPT, userMessage);
     console.log('YandexGPT response:', botReply.substring(0, 100));
 
     // Отправляем ответ в Telegram

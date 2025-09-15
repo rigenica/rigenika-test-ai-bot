@@ -1,0 +1,18 @@
+{
+  "name": "telegram-yandexgpt-bot",
+  "version": "1.0.0",
+  "main": "api/telegram.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "echo 'No build step required'",
+    "start": "vercel dev"
+  },
+  "dependencies": {
+    "openai": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "vercel": "^32.0.0"
+  }
+}

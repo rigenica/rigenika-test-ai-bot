@@ -19,6 +19,7 @@ const apiKey = process.env.YANDEX_GPT_API_KEY;
  * @param {string} userMessage – Собственно вопрос/сообщение пользователя.
  */
 async function yandexGptChat(systemPrompt, userMessage) {
+  // Пробуем альтернативный endpoint
   const url = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
 
   const payload = {
@@ -34,6 +35,10 @@ async function yandexGptChat(systemPrompt, userMessage) {
     ]
   };
 
+  console.log('API Key present:', !!apiKey);
+  console.log('Folder ID present:', !!folderId);
+  console.log('API Key length:', apiKey ? apiKey.length : 0);
+
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -44,12 +49,17 @@ async function yandexGptChat(systemPrompt, userMessage) {
     body: JSON.stringify(payload)
   });
 
+  console.log('Response status:', response.status);
+  console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
   if (!response.ok) {
     const error = await response.text();
+    console.error('YandexGPT API error details:', error);
     throw new Error(`YandexGPT API error ${response.status}: ${error}`);
   }
 
   const json = await response.json();
+  console.log('YandexGPT response structure:', Object.keys(json));
   return json.result.alternatives[0].message.text;
 }
 

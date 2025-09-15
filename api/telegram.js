@@ -1,4 +1,4 @@
-const fs = require('fs').promises;
+const fs = require('fs');
 
 // Читаем системный промпт из файла
 let SYSTEM_PROMPT = '';
@@ -13,13 +13,56 @@ try {
 const folderId = process.env.YANDEX_FOLDER_ID;
 const apiKey = process.env.YANDEX_GPT_API_KEY;
 
+// Кэш для IAM токена
+let iamToken = null;
+let tokenExpiry = null;
+
+/**
+ * Получает IAM токен из API ключа Yandex Cloud
+ */
+async function getIamToken() {
+  // Если токен еще действителен (с запасом 5 минут), возвращаем его
+  if (iamToken && tokenExpiry && Date.now() < tokenExpiry - 5 * 60 * 1000) {
+    return iamToken;
+  }
+
+  try {
+    const response = await fetch('https://iam.api.cloud.yandex.net/iam/v1/tokens', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        yandexPassportOauthToken: apiKey
+      })
+    });
+
+    if (!response.ok) {
+      console.error('Failed to get IAM token:', await response.text());
+      // Если не удалось получить IAM токен, возвращаем API ключ как есть
+      return apiKey;
+    }
+
+    const data = await response.json();
+    iamToken = data.iamToken;
+    // IAM токены действительны 12 часов
+    tokenExpiry = Date.now() + 12 * 60 * 60 * 1000;
+
+    console.log('Successfully obtained IAM token');
+    return iamToken;
+  } catch (error) {
+    console.error('Error getting IAM token:', error);
+    // В случае ошибки возвращаем API ключ
+    return apiKey;
+  }
+}
+
 /**
  * Отправляет запрос к YandexGPT и возвращает текст ответа.
  * @param {string} systemPrompt – Системный промпт (роль system).
  * @param {string} userMessage – Собственно вопрос/сообщение пользователя.
  */
 async function yandexGptChat(systemPrompt, userMessage) {
-  // Пробуем альтернативный endpoint
   const url = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
 
   const payload = {
@@ -39,11 +82,14 @@ async function yandexGptChat(systemPrompt, userMessage) {
   console.log('Folder ID present:', !!folderId);
   console.log('API Key length:', apiKey ? apiKey.length : 0);
 
+  // Пробуем получить IAM токен
+  const authToken = await getIamToken();
+
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Api-Key ${apiKey}`,
+      'Authorization': `Bearer ${authToken}`,
       'x-folder-id': folderId
     },
     body: JSON.stringify(payload)
@@ -55,6 +101,29 @@ async function yandexGptChat(systemPrompt, userMessage) {
   if (!response.ok) {
     const error = await response.text();
     console.error('YandexGPT API error details:', error);
+
+    // Если Bearer не сработал, попробуем Api-Key
+    if (response.status === 403) {
+      console.log('Trying Api-Key authorization...');
+      const fallbackResponse = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Api-Key ${apiKey}`,
+          'x-folder-id': folderId
+        },
+        body: JSON.stringify(payload)
+      });
+
+      console.log('Fallback response status:', fallbackResponse.status);
+
+      if (fallbackResponse.ok) {
+        const json = await fallbackResponse.json();
+        console.log('Fallback successful');
+        return json.result.alternatives[0].message.text;
+      }
+    }
+
     throw new Error(`YandexGPT API error ${response.status}: ${error}`);
   }
 

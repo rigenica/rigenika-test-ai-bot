@@ -1,5 +1,8 @@
 {
   "version": 2,
+  "buildCommand": null,
+  "outputDirectory": null,
+  "framework": null,
   "functions": {
     "api/telegram.js": {
       "maxDuration": 30

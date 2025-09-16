@@ -3,9 +3,16 @@ const fs = require('fs');
 // Читаем системный промпт из файла
 let SYSTEM_PROMPT = '';
 try {
-  SYSTEM_PROMPT = fs.readFileSync('system_prompt.txt', 'utf8').trim();
+  const path = require('path');
+  const promptPath = path.join(process.cwd(), 'system_prompt.txt');
+  console.log('Trying to read system prompt from:', promptPath);
+  SYSTEM_PROMPT = fs.readFileSync(promptPath, 'utf8').trim();
+  console.log('System prompt loaded successfully, length:', SYSTEM_PROMPT.length);
+  console.log('System prompt preview:', SYSTEM_PROMPT.substring(0, 200) + '...');
 } catch (error) {
   console.error('Error reading system prompt:', error);
+  console.error('Current working directory:', process.cwd());
+  console.error('Files in current directory:', fs.readdirSync(process.cwd()));
   SYSTEM_PROMPT = 'Ты полезный AI-ассистент. Отвечай на вопросы пользователя вежливо и информативно.';
 }
 
@@ -20,6 +27,9 @@ const FOLDER_ID = process.env.YANDEX_FOLDER_ID;        // folder ID
  * @param {string} userMessage – Собственно вопрос/сообщение пользователя.
  */
 async function yandexGptChat(systemPrompt, userMessage) {
+  console.log('System prompt being sent to YandexGPT:', systemPrompt.substring(0, 200) + '...');
+  console.log('User message:', userMessage);
+  
   const body = {
     modelUri: `gpt://${FOLDER_ID}/yandexgpt`,
     completionOptions: {

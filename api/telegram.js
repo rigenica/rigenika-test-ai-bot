@@ -56,25 +56,45 @@ async function yandexGptChat(systemPrompt, userMessage) {
   console.log('Using IAM Token auth:', !!IAM_TOKEN);
   console.log('Folder ID present:', !!FOLDER_ID);
 
-  const response = await fetch(
-    'https://llm.api.cloud.yandex.net/foundationModels/v1/completion',
-    {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    }
-  );
+  let response;
+  try {
+    response = await fetch(
+      'https://llm.api.cloud.yandex.net/foundationModels/v1/completion',
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      }
+    );
+  } catch (networkError) {
+    console.error('Network error when calling YandexGPT:', {
+      message: networkError.message,
+      stack: networkError.stack,
+      timestamp: new Date().toISOString(),
+      errorType: 'NETWORK_ERROR'
+    });
+    throw new Error(`Network error: ${networkError.message}`);
+  }
 
   console.log('Response status:', response.status);
 
   if (!response.ok) {
     const text = await response.text();
-    console.error('YandexGPT API error:', text);
+    console.error('YandexGPT API error - Status:', response.status);
+    console.error('YandexGPT API error - Response:', text);
+    console.error('YandexGPT API error - Headers:', Object.fromEntries(response.headers.entries()));
     throw new Error(`YandexGPT API error: ${response.status} ${text}`);
   }
 
   const result = await response.json();
-  console.log('YandexGPT response received');
+  console.log('YandexGPT response received successfully');
+  
+  // Проверяем структуру ответа
+  if (!result || !result.result || !result.result.alternatives || !result.result.alternatives[0] || !result.result.alternatives[0].message) {
+    console.error('Invalid YandexGPT response structure:', JSON.stringify(result, null, 2));
+    throw new Error('Invalid response structure from YandexGPT');
+  }
+  
   return result.result.alternatives[0].message.text;
 }
 
@@ -137,10 +157,28 @@ export default async function handler(req, res) {
 
     console.log('Processing message:', { chatId, userMessage: userMessage.substring(0, 100) });
 
-    // Отправляем запрос в YandexGPT
+    // Отправляем запрос в YandexGPT с фоллбеком
     console.log('Sending request to YandexGPT...');
-    const botReply = await yandexGptChat(SYSTEM_PROMPT, userMessage);
-    console.log('YandexGPT response:', botReply.substring(0, 100));
+    let botReply;
+    
+    try {
+      botReply = await yandexGptChat(SYSTEM_PROMPT, userMessage);
+      console.log('YandexGPT response received successfully:', botReply.substring(0, 100));
+    } catch (aiError) {
+      // Логируем детали ошибки нейросети для Vercel
+      console.error('YandexGPT AI Error - Full details:', {
+        message: aiError.message,
+        stack: aiError.stack,
+        timestamp: new Date().toISOString(),
+        userMessage: userMessage,
+        chatId: chatId,
+        errorType: 'AI_RESPONSE_FAILURE'
+      });
+      
+      // Используем фоллбек сообщение
+      botReply = "Спасибо за Ваше обращение . Передали Ваш запрос  службе заботы, в ближайшее время с Вами свяжутся 💚";
+      console.log('Using fallback response due to AI error');
+    }
 
     // Отправляем ответ в Telegram
     console.log('Sending reply to Telegram...');

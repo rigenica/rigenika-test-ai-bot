@@ -31,7 +31,7 @@ async function yandexGptChat(systemPrompt, userMessage) {
   console.log('User message:', userMessage);
   
   const body = {
-    modelUri: `gpt://${FOLDER_ID}/yandexgpt`,
+    modelUri: `gpt://${FOLDER_ID}/yandexgpt-lite`,
     completionOptions: {
       stream: false,
       temperature: 0.6,

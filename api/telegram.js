@@ -13,7 +13,7 @@ try {
   console.error('Error reading system prompt:', error);
   console.error('Current working directory:', process.cwd());
   console.error('Files in current directory:', fs.readdirSync(process.cwd()));
-  SYSTEM_PROMPT = 'Ты полезный AI-ассистент. Отвечай на вопросы пользователя вежливо и информативно.';
+  
 }
 
 // Загрузка переменных окружения для YandexGPT
@@ -31,11 +31,12 @@ async function yandexGptChat(systemPrompt, userMessage) {
   console.log('User message:', userMessage);
   
   const body = {
-    modelUri: `gpt://${FOLDER_ID}/yandexgpt-lite`,
+    //modelUri: `gpt://${FOLDER_ID}/yandexgpt-lite`,
+    modelUri: `gpt://${FOLDER_ID}/yandexgpt/latest`,
     completionOptions: {
       stream: false,
-      temperature: 0.6,
-      maxTokens: "2000",
+      temperature: 0.8,
+      maxTokens: "3000",
       reasoningOptions: { mode: "DISABLED" }
     },
     messages: [
